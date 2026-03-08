@@ -1,0 +1,41 @@
+# config/pipeline.yml — O CORAÇÃO da configuração
+
+pipeline:
+  name: "chainscope"
+  version: "1.0.0"
+  mode: "continuous" # continuous | batch | hybrid
+
+  # ── Controle de qualidade dos dados ──
+  quality:
+    minimum_source_confidence: 0.7 # 0-1 score
+    cross_validation_required: true
+    min_corroborating_sources: 2
+    freshness_threshold_hours: 24
+    dedup_strategy: "content_hash+semantic"
+
+  # ── Rate limiting global ──
+  rate_limits:
+    global_requests_per_second: 100
+    per_domain_requests_per_second: 2
+    backoff_strategy: "exponential_with_jitter"
+    max_retries: 5
+    respect_robots_txt: true
+    respect_rate_limit_headers: true
+
+  # ── Categorias de pesquisa ──
+  research_domains:
+    - protocol_fundamentals
+    - tokenomics
+    - on_chain_analytics
+    - governance
+    - developer_activity
+    - security_audits
+    - regulatory_landscape
+    - market_microstructure
+    - cross_chain_interop
+    - mev_analysis
+    - defi_mechanics
+    - zk_technology
+    - consensus_mechanisms
+    - layer2_scaling
+    - bridge_security

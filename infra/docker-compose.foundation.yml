@@ -1,0 +1,47 @@
+# infra/docker-compose.foundation.yml
+# Arquitetura base que o Claude Code vai provisionar
+
+services:
+  # ── Orquestrador principal ──
+  orchestrator:
+    build: ./services/orchestrator
+    environment:
+      - PIPELINE_MODE=continuous
+      - MAX_CONCURRENT_COLLECTORS=256
+      - BACKPRESSURE_THRESHOLD=0.85
+    volumes:
+      - ./config:/app/config
+      - ./state:/app/state
+
+  # ── Storage Layer ──
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    # TimescaleDB para séries temporais de preços/métricas on-chain
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    # Vector DB para embeddings de whitepapers, docs, proposals
+
+  neo4j:
+    image: neo4j:5-enterprise
+    # Graph DB para mapear relações entre protocolos/wallets/devs
+
+  redis:
+    image: redis:7-alpine
+    # Cache + message broker + rate limit state
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    # Analytics engine para queries agregadas massivas
+
+  # ── Processing ──
+  inference:
+    # Seu modelo na B300 — para classificação, NER, summarization
+    build: ./services/inference
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
