@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+.env
+*.egg-info/
+dist/
+build/
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime state
+ssh_sessions.db
+*.db
+state/
+logs/
+
+# Nix
+.direnv/
+result
+result-*
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local MCP config
+.mcp.json
+
+# Secrets
+*.key
+*.pem
+secrets.yml
+.sops.yaml
