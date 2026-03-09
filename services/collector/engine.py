@@ -26,6 +26,9 @@ import structlog
 from services.collector.adapters.base import BaseAdapter, RawDataPoint
 from services.collector.adapters.coingecko import CoinGeckoAdapter
 from services.collector.adapters.defillama import DefiLlamaAdapter
+from services.collector.adapters.ethereum_rpc import EthereumRPCAdapter
+from services.collector.adapters.snapshot import SnapshotAdapter
+from services.collector.adapters.thegraph import TheGraphAdapter
 from services.normalizer.engine import NormalizerEngine
 from services.storage.timescale import TimescaleClient
 
@@ -213,15 +216,25 @@ class CollectorEngine:
 
 def build_default_pipeline(dsn: str) -> CollectorEngine:
     """
-    Monta o pipeline padrão FASE 1+2:
+    Monta o pipeline padrão FASE 1+2+3:
+
+    FASE 1+2 — REST APIs:
         DefiLlama protocols  — a cada 1h
         DefiLlama fees       — a cada 1h
         DefiLlama hacks      — a cada 6h
         CoinGecko markets    — a cada 5min (top 250)
         CoinGecko global     — a cada 5min
+
+    FASE 3 — On-chain + GraphQL:
+        Ethereum block       — a cada 12s  (tempo médio de bloco)
+        Ethereum fee_history — a cada 1min
+        Snapshot proposals   — a cada 10min (governance ativa)
+        Snapshot spaces      — a cada 1h   (metadados de spaces)
+        TheGraph Uniswap v3  — a cada 5min (pools TVL/volume)
     """
     engine = CollectorEngine(dsn=dsn)
 
+    # ── FASE 1+2 ──
     defillama = DefiLlamaAdapter()
     engine.schedule(defillama, {"endpoint": "protocols"}, interval_seconds=3600,  name="defillama:protocols")
     engine.schedule(defillama, {"endpoint": "fees"},      interval_seconds=3600,  name="defillama:fees")
@@ -230,6 +243,27 @@ def build_default_pipeline(dsn: str) -> CollectorEngine:
     coingecko = CoinGeckoAdapter()
     engine.schedule(coingecko, {"endpoint": "markets", "per_page": 250}, interval_seconds=300, name="coingecko:markets")
     engine.schedule(coingecko, {"endpoint": "global"},                    interval_seconds=300, name="coingecko:global")
+
+    # ── FASE 3 ──
+    ethereum = EthereumRPCAdapter()
+    engine.schedule(ethereum, {"endpoint": "block"},       interval_seconds=12,  name="ethereum:block")
+    engine.schedule(ethereum, {"endpoint": "fee_history"}, interval_seconds=60,  name="ethereum:fee_history")
+
+    snapshot = SnapshotAdapter()
+    engine.schedule(snapshot, {"endpoint": "proposals", "state": "active"},  interval_seconds=600,  name="snapshot:proposals_active")
+    engine.schedule(snapshot, {"endpoint": "spaces"},                        interval_seconds=3600, name="snapshot:spaces")
+
+    thegraph = TheGraphAdapter()
+    engine.schedule(
+        thegraph,
+        {
+            "endpoint": "query",
+            "subgraph": "uniswap/uniswap-v3",
+            "query": "{ pools(first: 100, orderBy: volumeUSD, orderDirection: desc) { id feeTier totalValueLockedUSD volumeUSD txCount } }",
+        },
+        interval_seconds=300,
+        name="thegraph:uniswap_v3_pools",
+    )
 
     return engine
 
