@@ -19,7 +19,13 @@ from __future__ import annotations
 import structlog
 
 from services.collector.adapters.base import RawDataPoint
-from services.normalizer.mappers import coingecko_mapper, defillama_mapper
+from services.normalizer.mappers import (
+    coingecko_mapper,
+    defillama_mapper,
+    ethereum_mapper,
+    snapshot_mapper,
+    thegraph_mapper,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -47,6 +53,12 @@ class NormalizerEngine:
                 return self._normalize_defillama(dp)
             elif source == "coingecko":
                 return self._normalize_coingecko(dp)
+            elif source == "ethereum_rpc":
+                return self._normalize_ethereum(dp)
+            elif source == "thegraph":
+                return self._normalize_thegraph(dp)
+            elif source == "snapshot":
+                return self._normalize_snapshot(dp)
             else:
                 log.warning("normalizer.unknown_source", source_id=source)
                 return []
@@ -178,3 +190,123 @@ class NormalizerEngine:
             log.warning("normalizer.coingecko.global.bad_type", got=type(payload).__name__)
             return []
         return coingecko_mapper.map_global(payload, dp.collection_timestamp)
+
+    # ── Ethereum RPC ──────────────────────────────────────────────────────────
+
+    def _normalize_ethereum(self, dp: RawDataPoint) -> list[dict]:
+        endpoint = dp.metadata.get("endpoint", "block")
+
+        dispatch = {
+            "block":        self._normalize_ethereum_block,
+            "block_number": self._normalize_ethereum_block_number,
+            "balance":      self._normalize_ethereum_balance,
+            "fee_history":  self._normalize_ethereum_fee_history,
+            "gas_price":    self._normalize_ethereum_gas_price,
+        }
+
+        handler = dispatch.get(endpoint)
+        if handler is None:
+            log.debug("normalizer.ethereum.skip_endpoint", endpoint=endpoint)
+            return []
+
+        rows = handler(dp)
+        log.debug("normalizer.ethereum.done", endpoint=endpoint, rows=len(rows))
+        return rows
+
+    def _normalize_ethereum_block(self, dp: RawDataPoint) -> list[dict]:
+        payload = dp.raw_payload
+        if not isinstance(payload, dict):
+            log.warning("normalizer.ethereum.block.bad_type", got=type(payload).__name__)
+            return []
+        return ethereum_mapper.map_block(payload, dp.collection_timestamp)
+
+    def _normalize_ethereum_block_number(self, dp: RawDataPoint) -> list[dict]:
+        payload = dp.raw_payload
+        if not isinstance(payload, dict):
+            return []
+        return ethereum_mapper.map_block_number(payload, dp.collection_timestamp)
+
+    def _normalize_ethereum_balance(self, dp: RawDataPoint) -> list[dict]:
+        payload = dp.raw_payload
+        address = dp.metadata.get("address", "unknown")
+        if not isinstance(payload, dict):
+            return []
+        return ethereum_mapper.map_balance(payload, address, dp.collection_timestamp)
+
+    def _normalize_ethereum_fee_history(self, dp: RawDataPoint) -> list[dict]:
+        payload = dp.raw_payload
+        if not isinstance(payload, dict):
+            return []
+        return ethereum_mapper.map_fee_history(payload, dp.collection_timestamp)
+
+    def _normalize_ethereum_gas_price(self, dp: RawDataPoint) -> list[dict]:
+        payload = dp.raw_payload
+        if not isinstance(payload, dict):
+            return []
+        return ethereum_mapper.map_gas_price(payload, dp.collection_timestamp)
+
+    # ── The Graph ─────────────────────────────────────────────────────────────
+
+    def _normalize_thegraph(self, dp: RawDataPoint) -> list[dict]:
+        endpoint = dp.metadata.get("endpoint", "query")
+        subgraph = dp.metadata.get("subgraph", "unknown")
+        payload = dp.raw_payload
+
+        if not isinstance(payload, dict):
+            log.warning("normalizer.thegraph.bad_type", got=type(payload).__name__)
+            return []
+
+        # Mappers específicos por subgraph conhecido
+        if "uniswap" in subgraph and "v3" in subgraph:
+            data = payload.get("data") or {}
+            if "pools" in data:
+                rows = thegraph_mapper.map_uniswap_pools(payload, dp.collection_timestamp)
+                log.debug("normalizer.thegraph.done", subgraph=subgraph, rows=len(rows))
+                return rows
+
+        if "aave" in subgraph:
+            data = payload.get("data") or {}
+            if "reserves" in data:
+                rows = thegraph_mapper.map_aave_reserves(payload, dp.collection_timestamp)
+                log.debug("normalizer.thegraph.done", subgraph=subgraph, rows=len(rows))
+                return rows
+
+        # Fallback: mapper genérico
+        rows = thegraph_mapper.map_generic(payload, subgraph, dp.collection_timestamp)
+        log.debug("normalizer.thegraph.generic", subgraph=subgraph, rows=len(rows))
+        return rows
+
+    # ── Snapshot ──────────────────────────────────────────────────────────────
+
+    def _normalize_snapshot(self, dp: RawDataPoint) -> list[dict]:
+        endpoint = dp.metadata.get("endpoint", "proposals")
+        payload = dp.raw_payload
+
+        if not isinstance(payload, dict):
+            log.warning("normalizer.snapshot.bad_type", got=type(payload).__name__)
+            return []
+
+        dispatch = {
+            "proposals": self._normalize_snapshot_proposals,
+            "votes":     self._normalize_snapshot_votes,
+            "spaces":    self._normalize_snapshot_spaces,
+        }
+
+        handler = dispatch.get(endpoint)
+        if handler is None:
+            log.debug("normalizer.snapshot.skip_endpoint", endpoint=endpoint)
+            return []
+
+        rows = handler(dp)
+        log.debug("normalizer.snapshot.done", endpoint=endpoint, rows=len(rows))
+        return rows
+
+    def _normalize_snapshot_proposals(self, dp: RawDataPoint) -> list[dict]:
+        return snapshot_mapper.map_proposals(dp.raw_payload, dp.collection_timestamp)
+
+    def _normalize_snapshot_votes(self, dp: RawDataPoint) -> list[dict]:
+        proposal_id = dp.metadata.get("proposal", "unknown")
+        return snapshot_mapper.map_votes(dp.raw_payload, proposal_id, dp.collection_timestamp)
+
+    def _normalize_snapshot_spaces(self, dp: RawDataPoint) -> list[dict]:
+        return snapshot_mapper.map_spaces(dp.raw_payload, dp.collection_timestamp)
