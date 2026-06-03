@@ -5,7 +5,7 @@ description = "CHAINSCOPE — Crypto Intelligence Platform"
 requires-python = ">=3.12"
 dependencies = [
     # Transport — spider-nix como engine de coleta web (Tier 3-4)
-    "spider-nix @ file:///home/kernelcore/master/spider-nix",
+    "spider-nix @ file:///home/kernelcore/master/staging/spider-nix",
 
     # HTTP clients
     "httpx>=0.27.0",
