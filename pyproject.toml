@@ -7,6 +7,8 @@ dependencies = [
     # Transport — spider-nix como engine de coleta web (Tier 3-4)
     "spider-nix @ file:///home/kernelcore/master/staging/spider-nix",
 
+
+
     # HTTP clients
     "httpx>=0.27.0",
     "aiohttp>=3.9.0",           # WebSocket streams (blocos real-time, orderbook)
